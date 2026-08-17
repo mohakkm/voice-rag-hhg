@@ -10,19 +10,23 @@ import os
 import warnings
 warnings.filterwarnings("ignore")
 
-from datasets import load_dataset
+import pandas as pd
+from huggingface_hub import hf_hub_download
+from datasets import Dataset
 
 
 def load_hindi_passages(splits: list[str] | None = None) -> list[dict]:
     """
-    Load the Hindi subset of ``ai4bharat/MSMARCO-XI`` using the ``datasets`` library,
-    flatten every passage in every example into a normalised record, deduplicate
-    on passage text, and return the list.
+    Load the Hindi subset of ``ai4bharat/MSMARCO-XI``, flatten every passage in
+    every example into a normalised record, deduplicate on passage text, and
+    return the list.
 
     Note:
-        Because ``datasets`` 5.x deprecated remote code execution (needed to resolve
-        the config name ``"hi"`` in the dataset's custom loading script), we specify
-        the exact Hindi parquet files directly via ``data_files``.
+        Because ``datasets`` 5.x built-in parquet loader hits a pyarrow bug
+        (``ArrowNotImplementedError: Nested data conversions not implemented for
+        chunked array outputs``) when parsing large nested structs, we download the
+        parquet files via ``hf_hub_download``, read them with pandas, and load them
+        into a Hugging Face ``Dataset`` using ``Dataset.from_pandas``.
 
     Args:
         splits: Dataset splits to load. Defaults to ``["train", "validation"]``.
@@ -46,24 +50,35 @@ def load_hindi_passages(splits: list[str] | None = None) -> list[dict]:
     if splits is None:
         splits = ["train", "validation"]
 
-    data_files = {}
-    if "train" in splits:
-        data_files["train"] = "train/hintrain.parquet"
-    if "validation" in splits:
-        data_files["validation"] = "validation/hinval.parquet"
-
-    print(f"[ingest] Loading dataset splits {splits} using datasets library...")
-    ds = load_dataset("ai4bharat/MSMARCO-XI", data_files=data_files)
+    split_files = {
+        "train": "train/hintrain.parquet",
+        "validation": "validation/hinval.parquet"
+    }
 
     passages: list[dict] = []
     seen_texts: set[str] = set()
 
     for split in splits:
-        if split not in ds:
+        if split not in split_files:
             continue
+        filename = split_files[split]
+        print(f"[ingest] Downloading/loading '{filename}' using huggingface_hub...")
+        try:
+            file_path = hf_hub_download(
+                repo_id="ai4bharat/MSMARCO-XI",
+                filename=filename,
+                repo_type="dataset"
+            )
+            print(f"[ingest] Reading {filename} with pandas...")
+            df = pd.read_parquet(file_path)
+            print(f"[ingest] Loading into Hugging Face Dataset ({len(df):,} rows)...")
+            ds = Dataset.from_pandas(df)
+        except Exception as e:
+            print(f"[ingest] Error loading {split}: {e}")
+            continue
+
         print(f"[ingest] Flattening and deduplicating split '{split}'...")
-        split_data = ds[split]
-        for example in split_data:
+        for example in ds:
             qid = example["query_id"]
             passages_dict = example["passages"] or {}
 
@@ -107,4 +122,5 @@ def load_hindi_passages(splits: list[str] | None = None) -> list[dict]:
 
 if __name__ == "__main__":
     load_hindi_passages()
+
 
