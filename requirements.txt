@@ -1,0 +1,20 @@
+# Data & chunking
+datasets>=2.19.0
+sentence-transformers>=3.0.0
+
+# Vector DB (embedded/local mode — no server)
+qdrant-client>=1.9.0
+
+# STT
+sarvamai>=0.1.0
+
+# Generation + guardrails
+anthropic>=0.34.0
+
+# UI
+gradio>=4.40.0
+
+# Utility
+python-dotenv>=1.0.1
+numpy>=1.26.0
+tqdm>=4.66.0
