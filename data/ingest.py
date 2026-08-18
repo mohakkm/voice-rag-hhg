@@ -10,7 +10,7 @@ import os
 import warnings
 warnings.filterwarnings("ignore")
 
-import pandas as pd
+import pyarrow.parquet as pq
 from huggingface_hub import hf_hub_download
 from datasets import Dataset
 
@@ -22,11 +22,11 @@ def load_hindi_passages(splits: list[str] | None = None) -> list[dict]:
     return the list.
 
     Note:
-        Because ``datasets`` 5.x built-in parquet loader hits a pyarrow bug
-        (``ArrowNotImplementedError: Nested data conversions not implemented for
+        Because ``datasets`` 5.x built-in parquet loader and pyarrow's table conversion
+        hit a bug (``ArrowNotImplementedError: Nested data conversions not implemented for
         chunked array outputs``) when parsing large nested structs, we download the
-        parquet files via ``hf_hub_download``, read them with pandas, and load them
-        into a Hugging Face ``Dataset`` using ``Dataset.from_pandas``.
+        parquet files via ``hf_hub_download`` and read them batch-by-batch via pyarrow's
+        ``iter_batches()`` which yields contiguous record batches.
 
     Args:
         splits: Dataset splits to load. Defaults to ``["train", "validation"]``.
@@ -69,52 +69,72 @@ def load_hindi_passages(splits: list[str] | None = None) -> list[dict]:
                 filename=filename,
                 repo_type="dataset"
             )
-            print(f"[ingest] Reading {filename} with pandas...")
-            df = pd.read_parquet(file_path)
-            print(f"[ingest] Loading into Hugging Face Dataset ({len(df):,} rows)...")
-            ds = Dataset.from_pandas(df)
+            print(f"[ingest] Opening {filename} with PyArrow...")
+            pf = pq.ParquetFile(file_path)
+            
+            print(f"[ingest] Reading {filename} in contiguous batches...")
+            batches = pf.iter_batches(
+                batch_size=20000,
+                columns=[
+                    'query_id',
+                    'source_lang',
+                    'target_lang',
+                    'query_type',
+                    'query',
+                    'Eng_Query',
+                    'passages'
+                ]
+            )
+            
+            rows_processed = 0
+            for batch in batches:
+                batch_dict = batch.to_pydict()
+                num_rows = len(batch_dict["query_id"])
+                
+                for i in range(num_rows):
+                    qid = batch_dict["query_id"][i]
+                    passages_struct = batch_dict["passages"][i] or {}
+                    
+                    translated  = list(passages_struct.get("Translated_passages", []) or [])
+                    english     = list(passages_struct.get("English_passages",    []) or [])
+                    is_selected = list(passages_struct.get("is_selected",         []) or [])
+                    
+                    max_len = max(len(translated), len(english), len(is_selected))
+                    translated  += [""] * (max_len - len(translated))
+                    english     += [""] * (max_len - len(english))
+                    is_selected += [0] * (max_len - len(is_selected))
+                    
+                    for idx, (hi_text, en_text, sel) in enumerate(
+                        zip(translated, english, is_selected)
+                    ):
+                        hi_text = (hi_text or "").strip()
+                        if not hi_text or hi_text in seen_texts:
+                            continue
+                        seen_texts.add(hi_text)
+                        
+                        passages.append({
+                            "id": f"{split}_q{qid}_p{idx}",
+                            "text": hi_text,
+                            "meta": {
+                                "source_lang":     batch_dict["source_lang"][i],
+                                "target_lang":     batch_dict["target_lang"][i],
+                                "query_id":        qid,
+                                "query_type":      batch_dict["query_type"][i],
+                                "query_hi":        batch_dict["query"][i],
+                                "query_en":        batch_dict["Eng_Query"][i],
+                                "english_passage": en_text,
+                                "is_selected":     int(sel),
+                                "split":           split,
+                            },
+                        })
+                
+                rows_processed += num_rows
+                if rows_processed % 100000 == 0 or rows_processed == pf.metadata.num_rows:
+                    print(f"[ingest]   Processed {rows_processed:,} / {pf.metadata.num_rows:,} rows...")
+                    
         except Exception as e:
             print(f"[ingest] Error loading {split}: {e}")
             continue
-
-        print(f"[ingest] Flattening and deduplicating split '{split}'...")
-        for example in ds:
-            qid = example["query_id"]
-            passages_dict = example["passages"] or {}
-
-            translated  = list(passages_dict.get("Translated_passages", []) or [])
-            english     = list(passages_dict.get("English_passages",    []) or [])
-            is_selected = list(passages_dict.get("is_selected",         []) or [])
-
-            # Align lengths
-            max_len = max(len(translated), len(english), len(is_selected))
-            translated  += [""] * (max_len - len(translated))
-            english     += [""] * (max_len - len(english))
-            is_selected += [0] * (max_len - len(is_selected))
-
-            for idx, (hi_text, en_text, sel) in enumerate(
-                zip(translated, english, is_selected)
-            ):
-                hi_text = (hi_text or "").strip()
-                if not hi_text or hi_text in seen_texts:
-                    continue
-                seen_texts.add(hi_text)
-
-                passages.append({
-                    "id": f"{split}_q{qid}_p{idx}",
-                    "text": hi_text,
-                    "meta": {
-                        "source_lang":     example.get("source_lang", ""),
-                        "target_lang":     example.get("target_lang", ""),
-                        "query_id":        qid,
-                        "query_type":      example.get("query_type", ""),
-                        "query_hi":        example.get("query", ""),
-                        "query_en":        example.get("Eng_Query", ""),
-                        "english_passage": en_text,
-                        "is_selected":     int(sel),
-                        "split":           split,
-                    },
-                })
 
     print(f"[ingest] Total passages after dedup: {len(passages):,}")
     return passages
@@ -122,5 +142,3 @@ def load_hindi_passages(splits: list[str] | None = None) -> list[dict]:
 
 if __name__ == "__main__":
     load_hindi_passages()
-
-

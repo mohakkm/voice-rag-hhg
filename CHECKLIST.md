@@ -8,8 +8,8 @@ Every team member must individually post BOTH videos on Instagram, X, and Linked
 ---
 
 ## Phase 1 — Data & Chunking
-- [ ] Pull `ai4bharat/MSMARCO-XI`, config `"hi"`
-- [ ] Implement chunking strategy (a): fixed-size + overlap
+- [x] Pull `ai4bharat/MSMARCO-XI`, config `"hi"`
+- [x] Implement chunking strategy (a): fixed-size + overlap
 - [ ] Implement chunking strategy (b): semantic/embedding-boundary
 - [ ] Implement chunking strategy (c): metadata-aware, native passage boundaries
 - [ ] Index all 3 into Qdrant (embedded mode)

@@ -2,13 +2,13 @@
 
 Update this every session. This is the file you paste into Cursor/any IDE chat to restore context fast — keep it current, not aspirational.
 
-**Last updated:** Aug 17, 2026
-**Current phase:** Phase 0 — planning locked, build not started
+**Last updated:** Aug 19, 2026
+**Current phase:** Phase 1 — Data & Chunking / Embeddings
 
 ## Decisions locked (don't relitigate these mid-build)
 - Language: Hindi only, `ai4bharat/MSMARCO-XI` config `"hi"`
 - STT: Sarvam Saaras v3
-- Embeddings: multilingual-e5-large or bge-m3 (pick one on first embedding test, log which)
+- Embeddings: `intfloat/multilingual-e5-large` (explicit GPU/CUDA support verified)
 - Vector DB: Qdrant, embedded/local mode
 - Generation + guardrail checks: Claude API
 - Harness: custom, no LangChain
@@ -16,19 +16,23 @@ Update this every session. This is the file you paste into Cursor/any IDE chat t
 - 200ms target = retrieval leg only; full pipeline latency reported honestly, broken down by stage
 
 ## Completed
-- (nothing yet — architecture + checklist finalized)
+- Pull the `hi` subset of MSMARCO-XI, confirm row count and structure locally (resolved PyArrow string offset overflow crash)
+- Sample N=8000 queries (seed=42) and create `data/corpus_sample.jsonl` + `data/grouped_docs.jsonl` (concatenated per-query passages) to resolve corpus scale & passage granularity issues
+- Implement and verify `chunk_fixed_overlap` in `data/chunking.py` (23,989 chunks, 217.6 avg words, verified no "---" separator tokens)
+- Implement `retrieval/embeddings.py` (lazy-loaded `intfloat/multilingual-e5-large`, normalized float32 vectors, e5 query/passage prefix convention applied, GPU device explicitly targeted)
 
 ## In progress
-- (update as you start Phase 1)
+- Phase 1 chunking strategies evaluation (semantic & metadata-aware)
 
-## Blockers / open questions
-- Which embedding model wins on actual Hindi recall — not decided yet, test in Phase 1
+## Blockers / resolved
+- **Resolved**: Separator Bug. The initial `grouped_docs.jsonl` concatenation used `\n\n---\n\n` as a separator, causing `---` text tokens to leak into final chunks. Fixed by switching `PASSAGE_SEP` to pure whitespace `\n\n` and regenerating the grouped docs.
+- **Resolved**: PyArrow offset overflow on the HF Dataset wrapping. Fixed by returning the deduplicated passages list directly.
 - Sarvam free tier rate limits not yet checked against planned 30–50 query benchmark run
 
 ## Next 3 actions
-1. Pull the `hi` subset of MSMARCO-XI, confirm row count and structure locally
-2. Stand up Qdrant in embedded mode, get one chunking strategy indexed end to end
-3. Get Sarvam STT returning a transcript from a real mic input, before building anything else on top
+1. Implement chunk_semantic in `data/chunking.py`
+2. Implement chunk_metadata_aware in `data/chunking.py`
+3. Qdrant indexing and retrieval setup
 
 ## Team split
 - ML/retrieval/harness/guardrails: [you]
