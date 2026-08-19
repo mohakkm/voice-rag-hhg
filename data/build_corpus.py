@@ -74,12 +74,30 @@ def passage_index(p):
 grouped_docs = []
 for (splt, qid), bucket in buckets.items():
     bucket.sort(key=passage_index)
-    combined_text = PASSAGE_SEP.join(p["text"] for p in bucket)
+    
+    combined_parts = []
+    passage_offsets = []
+    current_word = 0
+    
+    for p in bucket:
+        p_text = p["text"]
+        p_len_words = len(p_text.split())
+        passage_offsets.append({
+            "passage_id": p["id"],
+            "word_start": current_word,
+            "word_end": current_word + p_len_words
+        })
+        combined_parts.append(p_text)
+        current_word += p_len_words
+
+    combined_text = PASSAGE_SEP.join(combined_parts)
     first_meta = bucket[0]["meta"]
+    
     grouped_docs.append({
-        "doc_id":       f"{splt}_q{qid}",
-        "text":         combined_text,
-        "passage_ids":  [p["id"] for p in bucket],
+        "doc_id":          f"{splt}_q{qid}",
+        "text":            combined_text,
+        "passage_ids":     [p["id"] for p in bucket],
+        "passage_offsets": passage_offsets,
         "meta": {
             "query_id":    qid,
             "query_hi":    first_meta.get("query_hi", ""),
