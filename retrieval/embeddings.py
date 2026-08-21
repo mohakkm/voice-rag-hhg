@@ -22,7 +22,10 @@ def get_model() -> SentenceTransformer:
     if _model is None:
         import torch
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        _model = SentenceTransformer(EMBEDDING_MODEL, device=device)
+        model_kwargs = {}
+        if device == "cuda":
+            model_kwargs["model_kwargs"] = {"dtype": torch.float16}
+        _model = SentenceTransformer(EMBEDDING_MODEL, device=device, **model_kwargs)
     return _model
 
 
@@ -42,11 +45,14 @@ def embed(texts: list[str]) -> np.ndarray:
 
     prefixed = [f"passage: {t}" for t in texts]
     model = get_model()
+    # Batch size of 128 is highly optimized for FP16 on the RTX 4060 GPU
+    batch_size = 128 if model.device.type == "cuda" else 32
     vectors = model.encode(
         prefixed,
         normalize_embeddings=True,
         show_progress_bar=False,
         convert_to_numpy=True,
+        batch_size=batch_size,
     )
     return vectors.astype(np.float32)
 

@@ -92,8 +92,13 @@ def chunk_semantic(
         min_chunk_words: minimum word count to keep a chunk from being merged
     """
     chunks = []
-    # Splitting on Devanagari danda (।), period, question mark, exclamation, or newlines
-    sentence_split_regex = re.compile(r'(?<=[।\.!\?])\s*|\n+')
+    # Splitting on Devanagari danda (।), period, question mark, exclamation, or newlines.
+    # \s+ (not \s*) is required: a zero-width split lets the boundary fall *inside* a
+    # whitespace-delimited token (e.g. abbreviation "एम.एस.एफ." has no spaces between the
+    # periods), which fragments one token into several "sentences". Rejoining those with
+    # " ".join() then inserts spaces that never existed in the source text, so the chunk's
+    # word list no longer matches a contiguous slice of the document's word list downstream.
+    sentence_split_regex = re.compile(r'(?<=[।\.!\?])\s+|\n+')
 
     total_merged_count = 0
 
