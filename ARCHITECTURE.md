@@ -14,7 +14,7 @@ Mic audio
   → [3] Embed query (multilingual-e5-large or bge-m3)
   → [4] Qdrant retrieval (top-k, embedded/local mode)
   → [5] Guardrail: grounding check (top score < threshold → refuse)
-  → [6] Claude API generation (answer from retrieved context only)
+  → [6] Groq API generation (answer from retrieved context only)
   → [7] Guardrail: post-gen groundedness check (claims trace to context?)
   → [8] Structured JSON response: {answer, sources, confidence, latency_breakdown}
 ```
@@ -28,7 +28,7 @@ Every stage timestamped. This is what feeds the P50/P70/P100 numbers.
 | Embeddings | `multilingual-e5-large` or `bge-m3` | Generic English embedding models underperform badly on Devanagari script. Non-negotiable pick. |
 | Vector DB | Qdrant, embedded/local mode (`qdrant-client`, no server) | Real vector DB in the stack (satisfies the brief), zero network hop keeps the retrieval leg fast. |
 | Chunking | 3 strategies, benchmarked | (a) fixed-size + overlap baseline, (b) semantic/embedding-boundary splitting, (c) metadata-aware using MSMARCO's native passage boundaries + language tag. Run recall@k on all 3, keep the numbers, pick winner (or ship as a configurable toggle — stronger demo). |
-| Generation | Claude API | Also used for the guardrail checks (grounding, off-topic) — one provider, less glue code. |
+| Generation | Groq API | Also used for the guardrail checks (grounding, off-topic) — one provider, less glue code. |
 | Harness | Custom orchestrator, no LangChain | 2–4 day budget. A framework you have to debug under time pressure is a liability, not a shortcut. |
 | Frontend | Gradio | Mic input + text output + shareable URL, minimal build time. Not Next.js — don't spend build time on frontend you're not fast at. |
 | Deploy | Hugging Face Spaces | Free, gives you the "live link" requirement directly. |
@@ -48,7 +48,7 @@ Do not fudge this. A transparent breakdown that shows you understand where time 
 ## Costs — target is $0
 - Qdrant (embedded), embeddings (self-hosted), Gradio, HF Spaces CPU, GitHub: free, no account limits to worry about.
 - Sarvam: ₹100 free credit on signup (confirm actual figure on dashboard), then ₹30/hr audio pay-as-you-go. Should not be exhausted at hackathon scale.
-- Claude API: no permanent free tier, but new accounts start with a small non-expiring credit. Use Haiku 4.5 for guardrail/classification calls, Sonnet 5 only for final generation, to stay inside it. Don't re-run the latency benchmark repeatedly "just to check."
+- Groq API: no permanent free tier, but new accounts start with a small non-expiring credit. Use Haiku 4.5 for guardrail/classification calls, Sonnet 5 only for final generation, to stay inside it. Don't re-run the latency benchmark repeatedly "just to check."
 - If anything asks for a credit card before first use, stop and swap to a free alternative — nothing here should require one at this usage level.
 
 ## Repo structure (suggested)

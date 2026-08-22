@@ -8,24 +8,35 @@ Notes on multilingual-e5-large prompt format:
   embed() handles the passage prefix internally. Callers embedding a *query*
   should pass ["query: <text>"] directly (or call embed_query()).
 """
+import time
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from config import EMBEDDING_MODEL
 
 _model: SentenceTransformer | None = None
+_model_load_count = 0
+_last_model_load_ms = 0.0
+_last_embed_query_timing = {
+    "get_model_ms": 0.0,
+    "encode_ms": 0.0,
+    "total_ms": 0.0,
+}
 
 
 def get_model() -> SentenceTransformer:
     """Lazy-load SentenceTransformer(EMBEDDING_MODEL) and cache in the module singleton."""
-    global _model
+    global _model, _model_load_count, _last_model_load_ms
     if _model is None:
+        t0 = time.perf_counter()
         import torch
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model_kwargs = {}
         if device == "cuda":
             model_kwargs["model_kwargs"] = {"dtype": torch.float16}
         _model = SentenceTransformer(EMBEDDING_MODEL, device=device, **model_kwargs)
+        _last_model_load_ms = (time.perf_counter() - t0) * 1000.0
+        _model_load_count += 1
     return _model
 
 
@@ -64,11 +75,32 @@ def embed_query(query: str) -> np.ndarray:
     Returns:
         float32 numpy array of shape (1, embedding_dim), L2-normalized.
     """
+    t_total = time.perf_counter()
+    t0 = time.perf_counter()
     model = get_model()
+    get_model_ms = (time.perf_counter() - t0) * 1000.0
+    t1 = time.perf_counter()
     vector = model.encode(
         [f"query: {query}"],
         normalize_embeddings=True,
         show_progress_bar=False,
         convert_to_numpy=True,
     )
+    encode_ms = (time.perf_counter() - t1) * 1000.0
+    _last_embed_query_timing["get_model_ms"] = get_model_ms
+    _last_embed_query_timing["encode_ms"] = encode_ms
+    _last_embed_query_timing["total_ms"] = (time.perf_counter() - t_total) * 1000.0
     return vector.astype(np.float32)
+
+
+def get_embed_debug_state() -> dict:
+    """Return singleton/debug timing state for diagnostics."""
+    model = _model
+    return {
+        "singleton_model_loaded": model is not None,
+        "model_object_id": id(model) if model is not None else None,
+        "model_load_count": _model_load_count,
+        "last_model_load_ms": _last_model_load_ms,
+        "model_device": str(model.device) if model is not None else None,
+        "last_embed_query_timing_ms": dict(_last_embed_query_timing),
+    }

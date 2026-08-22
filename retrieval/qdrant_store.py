@@ -2,19 +2,30 @@
 Phase 1/3. Qdrant in embedded/local mode — no server, zero network hop.
 This is the retrieval leg that has to hit the <200ms target (see ARCHITECTURE.md).
 """
+import time
 import numpy as np
 from qdrant_client import models
 from qdrant_client import QdrantClient
 from config import QDRANT_PATH, TOP_K
 
 _client: QdrantClient | None = None
+_client_open_count = 0
+_last_client_open_ms = 0.0
+_last_search_timing = {
+    "get_client_ms": 0.0,
+    "query_ms": 0.0,
+    "total_ms": 0.0,
+}
 
 
 def get_client():
     """Create embedded/local Qdrant client at QDRANT_PATH."""
-    global _client
+    global _client, _client_open_count, _last_client_open_ms
     if _client is None:
+        t0 = time.perf_counter()
         _client = QdrantClient(path=QDRANT_PATH)
+        _last_client_open_ms = (time.perf_counter() - t0) * 1000.0
+        _client_open_count += 1
     return _client
 
 
@@ -97,13 +108,17 @@ def index_chunks(
 
 def search(collection_name: str, query_vector, top_k: int = TOP_K):
     """Return top_k hits with score and payload for a query vector."""
+    t_total = time.perf_counter()
+    t0 = time.perf_counter()
     client = get_client()
+    get_client_ms = (time.perf_counter() - t0) * 1000.0
     query_vector = np.asarray(query_vector, dtype=np.float32)
     if query_vector.ndim > 1:
         if query_vector.shape[0] != 1:
             raise ValueError(f"query_vector must be 1D or (1, D), got {query_vector.shape}")
         query_vector = query_vector[0]
 
+    t1 = time.perf_counter()
     if hasattr(client, "search"):
         hits = client.search(
             collection_name=collection_name,
@@ -119,6 +134,10 @@ def search(collection_name: str, query_vector, top_k: int = TOP_K):
             with_payload=True,
         )
         hits = response.points
+    query_ms = (time.perf_counter() - t1) * 1000.0
+    _last_search_timing["get_client_ms"] = get_client_ms
+    _last_search_timing["query_ms"] = query_ms
+    _last_search_timing["total_ms"] = (time.perf_counter() - t_total) * 1000.0
 
     return [
         {
@@ -128,3 +147,15 @@ def search(collection_name: str, query_vector, top_k: int = TOP_K):
         }
         for hit in hits
     ]
+
+
+def get_qdrant_debug_state() -> dict:
+    """Return singleton/debug timing state for diagnostics."""
+    client = _client
+    return {
+        "singleton_client_loaded": client is not None,
+        "client_object_id": id(client) if client is not None else None,
+        "client_open_count": _client_open_count,
+        "last_client_open_ms": _last_client_open_ms,
+        "last_search_timing_ms": dict(_last_search_timing),
+    }

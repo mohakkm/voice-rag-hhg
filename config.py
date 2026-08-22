@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")  # kept for future use; not required for Groq path
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-large")
 QDRANT_PATH = os.getenv("QDRANT_PATH", "./qdrant_data")
 LANGUAGE = os.getenv("LANGUAGE", "hi-IN")
@@ -17,11 +18,15 @@ LANGUAGE = os.getenv("LANGUAGE", "hi-IN")
 RETRIEVAL_SCORE_THRESHOLD = 0.5   # below this -> off-topic refusal
 TOP_K = 5
 
+# Groq LLM settings — single model for generation + all guardrail checks.
+GROQ_MODEL = "openai/gpt-oss-120b"
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+
 def validate():
     """Call at app startup. Fails loud if keys are missing instead of failing weird later."""
     missing = [k for k, v in {
         "SARVAM_API_KEY": SARVAM_API_KEY,
-        "ANTHROPIC_API_KEY": ANTHROPIC_API_KEY,
+        "GROQ_API_KEY": GROQ_API_KEY,
     }.items() if not v]
     if missing:
         raise RuntimeError(f"Missing required env vars: {missing}. Copy .env.example to .env and fill in.")
