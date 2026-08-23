@@ -1,0 +1,119 @@
+{
+  "meta": {
+    "n_text_runs": 15,
+    "warmup_ms": 37222.37790003419,
+    "warmup_confirmed_before_timing": true,
+    "groundedness_excluded_from_timing": true,
+    "groundedness_note": "Skipped during benchmark due to Groq free-tier daily limits; confirmed working in live demo path."
+  },
+  "text_only": {
+    "stage_percentiles_ms": {
+      "stt": {
+        "p50": 0.0,
+        "p70": 0.0,
+        "p100": 0.0
+      },
+      "embed": {
+        "p50": 116.51229858398438,
+        "p70": 118.32289695739746,
+        "p100": 726.09543800354
+      },
+      "retrieve": {
+        "p50": 310.12773513793945,
+        "p70": 319.2902088165283,
+        "p100": 427.58822441101074
+      },
+      "generate": {
+        "p50": 5870.579481124878,
+        "p70": 8118.974685668944,
+        "p100": 20808.229446411133
+      },
+      "total": {
+        "p50": 6981.068849563599,
+        "p70": 8814.99638557434,
+        "p100": 21622.563123703003
+      }
+    },
+    "refused_count": 2,
+    "total_count": 15,
+    "refusal_rate": 0.13333333333333333,
+    "error_count": 0
+  },
+  "sampled_queries": [
+    {
+      "query_id": 722107,
+      "query_type": "DESCRIPTION",
+      "query_hi": "बेकिंग पाउडर का उपयोग किस लिए किया जाता है"
+    },
+    {
+      "query_id": 624835,
+      "query_type": "ENTITY",
+      "query_hi": "पतले लोग केले के साथ क्या खाते हैं"
+    },
+    {
+      "query_id": 611336,
+      "query_type": "LOCATION",
+      "query_hi": "कौन सी काउंटी में पाइप झील वी है"
+    },
+    {
+      "query_id": 874473,
+      "query_type": "NUMERIC",
+      "query_hi": "स्तर क्या होता है जिस पर सीद्रा विकसित होता है"
+    },
+    {
+      "query_id": 1035926,
+      "query_type": "PERSON",
+      "query_hi": "जो पोकर नाइट का मैक्स है"
+    },
+    {
+      "query_id": 452401,
+      "query_type": "DESCRIPTION",
+      "query_hi": "उदासीनता का उल्लेख करने वाला अवसादग्रस्त व्यक्तित्व यूनानी शब्द से लिया गया है जिसका अर्थ है"
+    },
+    {
+      "query_id": 598109,
+      "query_type": "ENTITY",
+      "query_hi": "समुद्र का पानी किस रंग का होता है"
+    },
+    {
+      "query_id": 394276,
+      "query_type": "LOCATION",
+      "query_hi": "किस राज्य में क्लीवलैंड जॉर्जिया है"
+    },
+    {
+      "query_id": 480434,
+      "query_type": "NUMERIC",
+      "query_hi": "गति का मूल्य संग्रहालय"
+    },
+    {
+      "query_id": 834697,
+      "query_type": "PERSON",
+      "query_hi": "ओसामा बिन लादेन का बेटा का नाम क्या है"
+    },
+    {
+      "query_id": 177447,
+      "query_type": "DESCRIPTION",
+      "query_hi": "नेकटाई बांधने का सबसे आसान तरीका"
+    },
+    {
+      "query_id": 662789,
+      "query_type": "ENTITY",
+      "query_hi": "परमाणु ऊर्जा संयंत्र को क्या ईंधन देता है"
+    },
+    {
+      "query_id": 987275,
+      "query_type": "LOCATION",
+      "query_hi": "मंजर कहाँ बेचा जाता है?"
+    },
+    {
+      "query_id": 444469,
+      "query_type": "NUMERIC",
+      "query_hi": "महिंद्रा क्वॉड की कीमत"
+    },
+    {
+      "query_id": 1052268,
+      "query_type": "PERSON",
+      "query_hi": "कौन गाता है आपके बिना?"
+    }
+  ]
+}

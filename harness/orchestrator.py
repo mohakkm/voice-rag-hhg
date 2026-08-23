@@ -17,7 +17,43 @@ logger = logging.getLogger(__name__)
 COLLECTION_NAME = "metadata_aware_chunks"
 
 
-def retry_with_backoff(fn, max_retries: int = 2, base_delay: float = 1.0):
+def _is_429_error(exc: Exception) -> bool:
+    """Best-effort detector for HTTP 429 / rate-limit failures."""
+    status_code = getattr(exc, "status_code", None)
+    if status_code == 429:
+        return True
+    text = str(exc).lower()
+    return "429" in text or "rate limit" in text or "too many requests" in text
+
+
+def _ensure_api_counter(stats: dict, api_name: str):
+    if api_name not in stats["by_api"]:
+        stats["by_api"][api_name] = {"retries_fired": 0, "http_429": 0}
+
+
+def _ensure_stage_counter(stats: dict, stage_name: str):
+    if stage_name not in stats["by_stage"]:
+        stats["by_stage"][stage_name] = {"retries_fired": 0, "http_429": 0}
+
+
+def _log_retry_event(event: str, stage_name: str, api_name: str, attempt: int, exc: Exception):
+    msg = (
+        f"[retry-observe] {event} | stage={stage_name} api={api_name} "
+        f"attempt={attempt} error={type(exc).__name__}: {exc}"
+    )
+    logger.warning(msg)
+    print(msg)
+
+
+def retry_with_backoff(
+    fn,
+    max_retries: int = 2,
+    base_delay: float = 1.0,
+    *,
+    stage_name: str = "unknown",
+    api_name: str = "unknown",
+    retry_stats: dict | None = None,
+):
     """
     Retry fn up to max_retries times with fixed base_delay between attempts.
     Raises the last exception if all attempts fail.
@@ -28,12 +64,25 @@ def retry_with_backoff(fn, max_retries: int = 2, base_delay: float = 1.0):
             return fn()
         except Exception as exc:
             last_exc = exc
+            if retry_stats is not None:
+                _ensure_api_counter(retry_stats, api_name)
+                _ensure_stage_counter(retry_stats, stage_name)
+                if _is_429_error(exc):
+                    retry_stats["total_http_429"] += 1
+                    retry_stats["by_api"][api_name]["http_429"] += 1
+                    retry_stats["by_stage"][stage_name]["http_429"] += 1
+                    _log_retry_event("http_429", stage_name, api_name, attempt + 1, exc)
             if attempt < max_retries - 1:
+                if retry_stats is not None:
+                    retry_stats["total_retries_fired"] += 1
+                    retry_stats["by_api"][api_name]["retries_fired"] += 1
+                    retry_stats["by_stage"][stage_name]["retries_fired"] += 1
+                    _log_retry_event("retry_fired", stage_name, api_name, attempt + 1, exc)
                 time.sleep(base_delay)
     raise last_exc
 
 
-def run_pipeline(audio_path: str) -> dict:
+def run_pipeline(audio_path: str, include_output_groundedness: bool = True) -> dict:
     """
     Run the full voice-RAG pipeline for a single audio file.
 
@@ -66,6 +115,12 @@ def run_pipeline(audio_path: str) -> dict:
     latency = {"stt": 0.0, "embed": 0.0, "retrieve": 0.0,
                "generate": 0.0, "guardrails": 0.0, "total": 0.0}
     groq_headers: dict = {}
+    retry_stats = {
+        "total_http_429": 0,
+        "total_retries_fired": 0,
+        "by_api": {},
+        "by_stage": {},
+    }
 
     def diagnostics() -> dict:
         return {
@@ -75,7 +130,12 @@ def run_pipeline(audio_path: str) -> dict:
 
     # ── STT ──────────────────────────────────────────────────────────────────
     t0 = time.time()
-    stt_result = retry_with_backoff(lambda: transcribe(audio_path))
+    stt_result = retry_with_backoff(
+        lambda: transcribe(audio_path),
+        stage_name="stt",
+        api_name="Sarvam",
+        retry_stats=retry_stats,
+    )
     latency["stt"] = (time.time() - t0) * 1000
 
     if not stt_result["success"]:
@@ -86,6 +146,7 @@ def run_pipeline(audio_path: str) -> dict:
             "refusal_reason": f"stt_failed: {stt_result['error']}",
             "groq_ratelimit_headers": {},
             "diagnostics": diagnostics(),
+            "retry_observability": retry_stats,
             "latency_ms": latency,
         }
 
@@ -94,7 +155,10 @@ def run_pipeline(audio_path: str) -> dict:
     # ── Input safety guardrail ────────────────────────────────────────────────
     t0 = time.time()
     is_safe, safety_reason = retry_with_backoff(
-        lambda: check_input_safety(transcript)
+        lambda: check_input_safety(transcript),
+        stage_name="guardrails_input_safety",
+        api_name="Groq",
+        retry_stats=retry_stats,
     )
     latency["guardrails"] += (time.time() - t0) * 1000
 
@@ -106,17 +170,28 @@ def run_pipeline(audio_path: str) -> dict:
             "refusal_reason": f"unsafe_input: {safety_reason}",
             "groq_ratelimit_headers": {},
             "diagnostics": diagnostics(),
+            "retry_observability": retry_stats,
             "latency_ms": latency,
         }
 
     # ── Embed query ───────────────────────────────────────────────────────────
     t0 = time.time()
-    query_vector = retry_with_backoff(lambda: embed_query(transcript))
+    query_vector = retry_with_backoff(
+        lambda: embed_query(transcript),
+        stage_name="embed",
+        api_name="LocalEmbed",
+        retry_stats=retry_stats,
+    )
     latency["embed"] = (time.time() - t0) * 1000
 
     # ── Qdrant retrieval ──────────────────────────────────────────────────────
     t0 = time.time()
-    hits = retry_with_backoff(lambda: search(COLLECTION_NAME, query_vector))
+    hits = retry_with_backoff(
+        lambda: search(COLLECTION_NAME, query_vector),
+        stage_name="retrieve",
+        api_name="Qdrant",
+        retry_stats=retry_stats,
+    )
     latency["retrieve"] = (time.time() - t0) * 1000
 
     top_score = hits[0]["score"] if hits else 0.0
@@ -131,13 +206,17 @@ def run_pipeline(audio_path: str) -> dict:
             "refusal_reason": f"off_topic: top_score={top_score:.3f} below threshold",
             "groq_ratelimit_headers": {},
             "diagnostics": diagnostics(),
+            "retry_observability": retry_stats,
             "latency_ms": latency,
         }
 
     # ── Generation ────────────────────────────────────────────────────────────
     t0 = time.time()
     answer, groq_headers = retry_with_backoff(
-        lambda: generate_answer(transcript, hits)
+        lambda: generate_answer(transcript, hits),
+        stage_name="generate",
+        api_name="Groq",
+        retry_stats=retry_stats,
     )
     latency["generate"] = (time.time() - t0) * 1000
 
@@ -154,15 +233,22 @@ def run_pipeline(audio_path: str) -> dict:
             "refusal_reason": "model_said_insufficient_context",
             "groq_ratelimit_headers": groq_headers,
             "diagnostics": diagnostics(),
+            "retry_observability": retry_stats,
             "latency_ms": latency,
         }
 
-    # ── Answer groundedness guardrail ─────────────────────────────────────────
-    t0 = time.time()
-    is_grounded, grounded_reason = retry_with_backoff(
-        lambda: check_answer_groundedness(answer, hits)
-    )
-    latency["guardrails"] += (time.time() - t0) * 1000
+    grounded_reason = None
+    is_grounded = True
+    if include_output_groundedness:
+        # ── Answer groundedness guardrail ─────────────────────────────────────
+        t0 = time.time()
+        is_grounded, grounded_reason = retry_with_backoff(
+            lambda: check_answer_groundedness(answer, hits),
+            stage_name="guardrails_output_groundedness",
+            api_name="Groq",
+            retry_stats=retry_stats,
+        )
+        latency["guardrails"] += (time.time() - t0) * 1000
 
     latency["total"] = (time.time() - t_total_start) * 1000
 
@@ -175,11 +261,12 @@ def run_pipeline(audio_path: str) -> dict:
         "refusal_reason": f"ungrounded_answer: {grounded_reason}" if not is_grounded else None,
         "groq_ratelimit_headers": groq_headers,
         "diagnostics": diagnostics(),
+        "retry_observability": retry_stats,
         "latency_ms": latency,
     }
 
 
-def run_pipeline_from_text(transcript: str) -> dict:
+def run_pipeline_from_text(transcript: str, include_output_groundedness: bool = True) -> dict:
     """
     Run the retrieval + generation + guardrails stages with a pre-supplied
     transcript, skipping STT entirely. Useful for testing and benchmarking
@@ -197,7 +284,7 @@ def run_pipeline_from_text(transcript: str) -> dict:
 
     _sc.transcribe = _stub
     try:
-        result = run_pipeline("__text_injection__")
+        result = run_pipeline("__text_injection__", include_output_groundedness=include_output_groundedness)
     finally:
         _sc.transcribe = _orig
 
