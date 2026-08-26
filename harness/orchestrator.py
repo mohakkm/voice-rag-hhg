@@ -129,6 +129,7 @@ def run_pipeline(audio_path: str, include_output_groundedness: bool = True) -> d
         }
 
     # ── STT ──────────────────────────────────────────────────────────────────
+    print("[pipeline] before STT", flush=True)
     t0 = time.time()
     stt_result = retry_with_backoff(
         lambda: transcribe(audio_path),
@@ -137,6 +138,7 @@ def run_pipeline(audio_path: str, include_output_groundedness: bool = True) -> d
         retry_stats=retry_stats,
     )
     latency["stt"] = (time.time() - t0) * 1000
+    print("[pipeline] after STT", flush=True)
 
     if not stt_result["success"]:
         latency["total"] = (time.time() - t_total_start) * 1000
@@ -175,6 +177,7 @@ def run_pipeline(audio_path: str, include_output_groundedness: bool = True) -> d
         }
 
     # ── Embed query ───────────────────────────────────────────────────────────
+    print("[pipeline] before embed", flush=True)
     t0 = time.time()
     query_vector = retry_with_backoff(
         lambda: embed_query(transcript),
@@ -183,8 +186,10 @@ def run_pipeline(audio_path: str, include_output_groundedness: bool = True) -> d
         retry_stats=retry_stats,
     )
     latency["embed"] = (time.time() - t0) * 1000
+    print("[pipeline] after embed", flush=True)
 
     # ── Qdrant retrieval ──────────────────────────────────────────────────────
+    print("[pipeline] before Qdrant search", flush=True)
     t0 = time.time()
     hits = retry_with_backoff(
         lambda: search(COLLECTION_NAME, query_vector),
@@ -193,6 +198,7 @@ def run_pipeline(audio_path: str, include_output_groundedness: bool = True) -> d
         retry_stats=retry_stats,
     )
     latency["retrieve"] = (time.time() - t0) * 1000
+    print("[pipeline] after Qdrant search", flush=True)
 
     top_score = hits[0]["score"] if hits else 0.0
 
@@ -211,6 +217,7 @@ def run_pipeline(audio_path: str, include_output_groundedness: bool = True) -> d
         }
 
     # ── Generation ────────────────────────────────────────────────────────────
+    print("[pipeline] before generate", flush=True)
     t0 = time.time()
     answer, groq_headers = retry_with_backoff(
         lambda: generate_answer(transcript, hits),
@@ -219,6 +226,7 @@ def run_pipeline(audio_path: str, include_output_groundedness: bool = True) -> d
         retry_stats=retry_stats,
     )
     latency["generate"] = (time.time() - t0) * 1000
+    print("[pipeline] after generate", flush=True)
 
     # If the model itself signals the context doesn't contain the answer,
     # treat it as a clean refusal — skip the groundedness check entirely.

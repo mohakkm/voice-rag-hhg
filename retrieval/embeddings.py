@@ -29,12 +29,7 @@ def get_model() -> SentenceTransformer:
     global _model, _model_load_count, _last_model_load_ms
     if _model is None:
         t0 = time.perf_counter()
-        import torch
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model_kwargs = {}
-        if device == "cuda":
-            model_kwargs["model_kwargs"] = {"dtype": torch.float16}
-        _model = SentenceTransformer(EMBEDDING_MODEL, device=device, **model_kwargs)
+        _model = SentenceTransformer(EMBEDDING_MODEL, device="cpu")
         _last_model_load_ms = (time.perf_counter() - t0) * 1000.0
         _model_load_count += 1
     return _model
