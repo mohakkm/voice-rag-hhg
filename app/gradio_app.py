@@ -5,13 +5,12 @@ Deploy target: Hugging Face Spaces (CPU tier, free — see ARCHITECTURE.md).
 import html
 import logging
 import os
+import shutil
 import tempfile
 import time
 import traceback
-import wave
 
 import gradio as gr
-import numpy as np
 
 from harness.orchestrator import run_pipeline
 from config import validate
@@ -91,54 +90,28 @@ def _format_latency_markdown(latency_ms: dict) -> str:
     return "\n".join(lines)
 
 
-def _write_temp_wav(audio_input) -> tuple[str | None, bool]:
+def _write_temp_wav(uploaded_file) -> tuple[str | None, bool]:
     """
-    Convert Gradio audio input to a filesystem path accepted by run_pipeline.
+    Copy the uploaded WAV file to a temporary path accepted by run_pipeline.
     Returns (audio_path, should_delete_path).
     """
-    if audio_input is None:
+    if uploaded_file is None:
         return None, False
 
-    if isinstance(audio_input, str):
-        return audio_input, False
-
-    if isinstance(audio_input, dict):
-        path = audio_input.get("path")
-        if path:
-            return str(path), False
-        return None, False
-
-    if not isinstance(audio_input, (tuple, list)) or len(audio_input) != 2:
-        raise ValueError("Unexpected audio input format from Gradio.")
-
-    sample_rate, waveform = audio_input
-    if waveform is None:
-        return None, False
-
-    arr = np.asarray(waveform)
-    if arr.size == 0:
-        return None, False
-
-    if arr.ndim == 2:
-        # Downmix stereo/multichannel to mono for STT ingestion.
-        arr = np.mean(arr, axis=1)
-    elif arr.ndim != 1:
-        raise ValueError(f"Unexpected waveform dimensions: {arr.shape}")
-
-    if np.issubdtype(arr.dtype, np.floating):
-        arr = np.clip(arr, -1.0, 1.0)
-        pcm = (arr * 32767.0).astype(np.int16)
+    if isinstance(uploaded_file, str):
+        source_path = uploaded_file
+    elif isinstance(uploaded_file, dict):
+        source_path = uploaded_file.get("path") or uploaded_file.get("name")
     else:
-        pcm = arr.astype(np.int16)
+        source_path = getattr(uploaded_file, "name", None)
+    if not source_path:
+        raise ValueError("Unexpected file input format from Gradio.")
+    if not str(source_path).lower().endswith(".wav"):
+        raise ValueError("Please upload a .wav audio file.")
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         temp_path = tmp.name
-
-    with wave.open(temp_path, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(int(sample_rate))
-        wf.writeframes(pcm.tobytes())
+    shutil.copyfile(str(source_path), temp_path)
 
     return temp_path, True
 
@@ -194,13 +167,13 @@ def _run_from_audio(audio_input):
 def build_interface():
     with gr.Blocks(title="Voice RAG (Hindi)") as demo:
         gr.Markdown("## Voice RAG Demo")
-        gr.Markdown("Record a Hindi question using the microphone and submit.")
+        gr.Markdown("Upload a Hindi question as a .wav file and submit.")
 
         with gr.Row():
-            audio_in = gr.Audio(
-                sources=["microphone", "upload"],
-                type="numpy",
-                label="Microphone Input",
+            audio_in = gr.File(
+                file_types=[".wav"],
+                type="filepath",
+                label="WAV Audio File",
             )
 
         submit_btn = gr.Button("Run Pipeline", variant="primary")
