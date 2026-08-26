@@ -1,3 +1,17 @@
+---
+title: HHGOA Task2 Voice RAG
+emoji: 🎙️
+colorFrom: blue
+colorTo: purple
+sdk: gradio
+sdk_version: 4.44.0
+app_file: app/gradio_app.py
+pinned: false
+---
+
+
+
+
 # Voice RAG — HH Goa 2026, Task 2
 
 Voice-enabled RAG over the Hindi subset of `ai4bharat/MSMARCO-XI`.
