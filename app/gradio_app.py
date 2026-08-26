@@ -214,7 +214,6 @@ def build_interface():
             datatype=["number", "number", "str"],
             label="Retrieved Sources (with scores)",
             row_count=(0, "dynamic"),
-            column_count=(3, "fixed"),
             wrap=True,
         )
         gr.Markdown("### Latency Breakdown")
