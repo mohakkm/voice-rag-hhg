@@ -10,30 +10,30 @@ Every team member must individually post BOTH videos on Instagram, X, and Linked
 ## Phase 1 — Data & Chunking
 - [x] Pull `ai4bharat/MSMARCO-XI`, config `"hi"`
 - [x] Implement chunking strategy (a): fixed-size + overlap
-- [ ] Implement chunking strategy (b): semantic/embedding-boundary
-- [ ] Implement chunking strategy (c): metadata-aware, native passage boundaries
-- [ ] Index all 3 into Qdrant (embedded mode)
-- [ ] Run recall@k eval across all 3, record numbers
-- [ ] Pick winner or ship as configurable toggle
+- [x] Implement chunking strategy (b): semantic/embedding-boundary
+- [x] Implement chunking strategy (c): metadata-aware, native passage boundaries
+- [x] Index all 3 into Qdrant (embedded mode)
+- [x] Run recall@k eval across all 3, record numbers
+- [x] Pick winner or ship as configurable toggle
 
 ## Phase 2 — Voice Pipeline
-- [ ] Sarvam API key + Saaras v3 wired, `language_code="hi-IN"`
-- [ ] Mic input → transcription tested with real Hindi audio
-- [ ] Handle silence / empty audio gracefully
-- [ ] Handle code-mixed (Hinglish) input without crashing
+- [x] Sarvam API key + Saaras v3 wired, `language_code="hi-IN"`
+- [x] Mic input → transcription tested with real Hindi audio
+- [x] Handle silence / empty audio gracefully
+- [x] Handle code-mixed (Hinglish) input without crashing
 
 ## Phase 3 — Harness & Retrieval
-- [ ] Orchestrator function: STT → embed → retrieve → generate → structured output
-- [ ] Claude API call for answer generation, context-only prompting
-- [ ] Retries + timeout handling on every external API call
-- [ ] Structured JSON output: answer, sources, confidence, latency breakdown
+- [x] Orchestrator function: STT → embed → retrieve → generate → structured output
+- [x] Groq API call for answer generation, context-only prompting
+- [x] Retries + timeout handling on every external API call
+- [x] Structured JSON output: answer, sources, confidence, latency breakdown
 
 ## Phase 4 — Guardrails
-- [ ] Off-topic detector (similarity threshold on retrieval score)
-- [ ] Unsafe/inappropriate input classifier on STT output
-- [ ] Post-generation groundedness check (answer traces to retrieved context)
-- [ ] Refusal path returns "insufficient context," not a hallucinated guess
-- [ ] Adversarial test pass: silence, gibberish, off-topic query, unsafe query — confirm each is handled, not crashed
+- [x] Off-topic detector (similarity threshold on retrieval score)
+- [x] Unsafe/inappropriate input classifier on STT output
+- [x] Post-generation groundedness check (answer traces to retrieved context)
+- [x] Refusal path returns "insufficient context," not a hallucinated guess
+- [x] Adversarial test pass: silence, gibberish, off-topic query, unsafe query — confirm each is handled, not crashed
 
 ## Phase 5 — Latency, UI, Deploy
 - [ ] Gradio UI: mic in, transcript + answer + sources out
