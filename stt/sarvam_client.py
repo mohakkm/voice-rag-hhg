@@ -21,6 +21,24 @@ from typing import Dict, Any
 
 from config import SARVAM_API_KEY, LANGUAGE
 
+STT_TIMEOUT_SECONDS = 15.0
+
+
+def _is_timeout_error(exc: Exception) -> bool:
+    """Recognize timeout exceptions across Sarvam/httpx SDK versions."""
+    name = type(exc).__name__.lower()
+    message = str(exc).lower()
+    return "timeout" in name or "timeout" in message or "timed out" in message
+
+
+def _timeout_result(start: float) -> Dict[str, Any]:
+    return {
+        "success": False,
+        "transcript": None,
+        "latency_ms": (time.time() - start) * 1000,
+        "error": "stt_timeout",
+    }
+
 
 def transcribe(audio_path: str) -> Dict[str, Any]:
     """Transcribe an audio file using SarvamAI.
@@ -56,7 +74,10 @@ def transcribe(audio_path: str) -> Dict[str, Any]:
         return {"success": False, "transcript": None, "latency_ms": latency_ms, "error": f"missing_sarvamai:{e}"}
 
     try:
-        client = SarvamAI(api_subscription_key=SARVAM_API_KEY)
+        client = SarvamAI(
+            api_subscription_key=SARVAM_API_KEY,
+            timeout=STT_TIMEOUT_SECONDS,
+        )
         stt = client.speech_to_text
 
         # Quick path: some SDKs accept file_path/file/path keyword
@@ -75,7 +96,9 @@ def transcribe(audio_path: str) -> Dict[str, Any]:
                 break
             except TypeError as e:
                 tried_exceptions.append(str(e))
-            except Exception:
+            except Exception as e:
+                if _is_timeout_error(e):
+                    return _timeout_result(start)
                 # Non-TypeError errors should not stop us from trying other
                 # signatures; record and continue.
                 tried_exceptions.append("other")
@@ -123,6 +146,8 @@ def transcribe(audio_path: str) -> Dict[str, Any]:
                         response = func(**kwargs)
                         break
                     except Exception as e:
+                        if _is_timeout_error(e):
+                            return _timeout_result(start)
                         tried_exceptions.append(f"kw[{candidate}]: {e}")
 
             if response is None:
@@ -180,4 +205,6 @@ def transcribe(audio_path: str) -> Dict[str, Any]:
 
     except Exception as e:
         latency_ms = (time.time() - start) * 1000
+        if _is_timeout_error(e):
+            return _timeout_result(start)
         return {"success": False, "transcript": None, "latency_ms": latency_ms, "error": str(e)}
